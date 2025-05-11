@@ -1,5 +1,6 @@
 const http = require('http');
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
 const { program } = require('commander');
 const superagent = require('superagent');
@@ -11,8 +12,12 @@ program
   .requiredOption('-c, --cache <dir>', 'Cache directory');
 
 program.parse(process.argv);
-const options = program.opts();
-const { host, port, cache } = options;
+const { host, port, cache } = program.opts();
+
+// Створення директорії кешу, якщо нема
+if (!fsSync.existsSync(cache)) {
+  fsSync.mkdirSync(cache, { recursive: true });
+}
 
 const server = http.createServer(async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
@@ -27,7 +32,10 @@ const server = http.createServer(async (req, res) => {
         res.end(data);
       } catch {
         try {
-          const response = await superagent.get(`https://http.cat/${code}`).responseType('blob');
+          const response = await superagent
+            .get(`https://http.cat/${code}`)
+            .buffer(true)
+            .parse(superagent.parse.image);
           const image = response.body;
           await fs.writeFile(filePath, image);
           res.writeHead(200, { 'Content-Type': 'image/jpeg' });
@@ -35,6 +43,7 @@ const server = http.createServer(async (req, res) => {
         } catch {
           res.writeHead(404);
           res.end('Not found');
+          return;
         }
       }
 
@@ -62,12 +71,6 @@ const server = http.createServer(async (req, res) => {
     res.end('Server error');
   }
 });
-
-const fsSync = require('fs');
-if (!fsSync.existsSync(cache)) {
-  fsSync.mkdirSync(cache, { recursive: true });
-}
-
 
 server.listen(port, host, () => {
   console.log(`Server running at http://${host}:${port}`);
